@@ -54,7 +54,7 @@ Every task includes a **Quality Gate** section with:
 
 Dev dependencies are defined in task 01's `pyproject.toml` under `[project.optional-dependencies] dev`:
 ```bash
-pip install -e ".[dev]"  # installs ruff, pytest, pytest-asyncio, mypy
+uv sync --extra dev  # installs ruff, pytest, pytest-asyncio, mypy
 ```
 
 **Rule: Don't move to the next task until the current task's quality gate passes.**

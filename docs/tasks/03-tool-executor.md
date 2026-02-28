@@ -489,17 +489,17 @@ async def test_web_search(executor):
 ### Run
 
 ```bash
-ruff check tools/ tests/test_tools.py
-mypy tools/executor.py
-pytest tests/test_tools.py -v
+uv run ruff check tools/ tests/test_tools.py
+uv run mypy tools/executor.py
+uv run pytest tests/test_tools.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check tools/ tests/test_tools.py` | |
-| Types pass | `mypy tools/executor.py` | |
-| Risk classification | `pytest tests/test_tools.py -k risk -v` | |
-| Tool execution | `pytest tests/test_tools.py -k "not risk" -v` | |
+| Lint clean | `uv run ruff check tools/ tests/test_tools.py` | |
+| Types pass | `uv run mypy tools/executor.py` | |
+| Risk classification | `uv run pytest tests/test_tools.py -k risk -v` | |
+| Tool execution | `uv run pytest tests/test_tools.py -k "not risk" -v` | |
 | Blocked cmd denied | `rm -rf /` classified as DANGEROUS | |
 
 ## Design reference

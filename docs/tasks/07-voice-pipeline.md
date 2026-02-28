@@ -197,18 +197,18 @@ async def test_pipeline_feed_audio_calls_vad():
 ### Run
 
 ```bash
-ruff check voice/ tests/test_voice.py
-mypy voice/vad.py voice/stt.py voice/tts.py voice/pipeline.py
-pytest tests/test_voice.py -v
+uv run ruff check voice/ tests/test_voice.py
+uv run mypy voice/vad.py voice/stt.py voice/tts.py voice/pipeline.py
+uv run pytest tests/test_voice.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check voice/ tests/test_voice.py` | |
-| Types pass | `mypy voice/vad.py voice/pipeline.py` | |
-| VAD silence test | `pytest tests/test_voice.py::test_vad_silence` | |
-| Pipeline state | `pytest tests/test_voice.py::test_pipeline_initial_state` | |
-| Factories create objects | `pytest tests/test_voice.py -k factory` | |
+| Lint clean | `uv run ruff check voice/ tests/test_voice.py` | |
+| Types pass | `uv run mypy voice/vad.py voice/pipeline.py` | |
+| VAD silence test | `uv run pytest tests/test_voice.py::test_vad_silence` | |
+| Pipeline state | `uv run pytest tests/test_voice.py::test_pipeline_initial_state` | |
+| Factories create objects | `uv run pytest tests/test_voice.py -k factory` | |
 
 **Note:** STT/TTS API calls require keys — those are tested in the verification section manually. Unit tests use mocks.
 

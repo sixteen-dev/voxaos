@@ -442,18 +442,18 @@ def test_self_demo_has_acts():
 ### Run
 
 ```bash
-ruff check skills/ tests/test_skills.py
-mypy skills/loader.py skills/selector.py
-pytest tests/test_skills.py -v
+uv run ruff check skills/ tests/test_skills.py
+uv run mypy skills/loader.py skills/selector.py
+uv run pytest tests/test_skills.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check skills/ tests/test_skills.py` | |
-| Types pass | `mypy skills/loader.py skills/selector.py` | |
-| 7 skills loaded | `pytest tests/test_skills.py::test_load_skills_count` | |
-| All skills parse | `pytest tests/test_skills.py::test_skill_has_required_fields` | |
-| Self-demo complete | `pytest tests/test_skills.py::test_self_demo_has_acts` | |
+| Lint clean | `uv run ruff check skills/ tests/test_skills.py` | |
+| Types pass | `uv run mypy skills/loader.py skills/selector.py` | |
+| 7 skills loaded | `uv run pytest tests/test_skills.py::test_load_skills_count` | |
+| All skills parse | `uv run pytest tests/test_skills.py::test_skill_has_required_fields` | |
+| Self-demo complete | `uv run pytest tests/test_skills.py::test_self_demo_has_acts` | |
 
 ## Design reference
 

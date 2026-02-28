@@ -165,7 +165,7 @@ function appendLog(type, text) {
 ## Verification
 
 ```bash
-python main.py
+uv run python main.py
 # Open http://localhost:7860 in Chrome
 
 # Test 1: Text input
@@ -218,7 +218,7 @@ grep -n "localhost" ui/app.js | grep -v "//" || echo "OK: no hardcoded localhost
 ### Lint the server-side static mount
 
 ```bash
-ruff check server/app.py
+uv run ruff check server/app.py
 ```
 
 | Check | Command | Pass? |

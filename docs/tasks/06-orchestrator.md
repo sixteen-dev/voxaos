@@ -305,7 +305,7 @@ if __name__ == "__main__":
 export MISTRAL_API_KEY="your-key-here"
 
 # Run the REPL
-python main.py
+uv run python main.py
 
 # Test these inputs:
 # > List files in /tmp
@@ -387,17 +387,17 @@ async def test_orchestrator_init():
 ### Run
 
 ```bash
-ruff check core/context.py core/orchestrator.py tests/test_orchestrator.py
-mypy core/context.py
-pytest tests/test_orchestrator.py -v
+uv run ruff check core/context.py core/orchestrator.py tests/test_orchestrator.py
+uv run mypy core/context.py
+uv run pytest tests/test_orchestrator.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check core/ tests/test_orchestrator.py` | |
-| Types pass | `mypy core/context.py` | |
-| Context manager | `pytest tests/test_orchestrator.py -k context -v` | |
-| Orchestrator init | `pytest tests/test_orchestrator.py::test_orchestrator_init` | |
+| Lint clean | `uv run ruff check core/ tests/test_orchestrator.py` | |
+| Types pass | `uv run mypy core/context.py` | |
+| Context manager | `uv run pytest tests/test_orchestrator.py -k context -v` | |
+| Orchestrator init | `uv run pytest tests/test_orchestrator.py::test_orchestrator_init` | |
 | Text REPL starts | `python main.py` starts without crash (manual) | |
 
 ## Design reference

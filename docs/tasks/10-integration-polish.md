@@ -79,15 +79,11 @@ set -e
 
 echo "=== VoxaOS Setup ==="
 
-# Check Python
-python3 --version || { echo "Python 3.11+ required"; exit 1; }
-
-# Create venv
-python3 -m venv .venv
-source .venv/bin/activate
+# Check uv
+uv --version || { echo "uv required: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
 
 # Install deps
-pip install -e .
+uv sync
 
 # Create data directories
 mkdir -p ~/.voxaos/memory
@@ -103,7 +99,7 @@ fi
 
 echo ""
 echo "=== Setup complete ==="
-echo "Run: source .venv/bin/activate && python main.py"
+echo "Run: uv run python main.py"
 ```
 
 ### 5. Demo Script
@@ -169,30 +165,30 @@ Task 10 is the final gate — run the entire quality suite across all modules.
 
 ```bash
 # Lint everything
-ruff check core/ llm/ tools/ skills/ memory/ server/ tests/ main.py
+uv run ruff check core/ llm/ tools/ skills/ memory/ server/ tests/ main.py
 
 # Type check critical modules
-mypy core/config.py core/types.py core/context.py \
+uv run mypy core/config.py core/types.py core/context.py \
      llm/client.py llm/tools.py \
      tools/executor.py \
      memory/types.py memory/capture.py \
      server/audio_handler.py
 
 # Run all tests
-pytest tests/ -v --tb=short
+uv run pytest tests/ -v --tb=short
 
 # Test count sanity check — should have at least 25 tests across all files
-pytest tests/ --co -q | tail -1
+uv run pytest tests/ --co -q | tail -1
 ```
 
 ### Final gate checklist
 
 | # | Check | Command | Pass? |
 |---|-------|---------|-------|
-| 1 | Zero lint errors | `ruff check` exits 0 | |
-| 2 | Types clean | `mypy` exits 0 | |
-| 3 | All unit tests pass | `pytest tests/ -v` all green | |
-| 4 | Server starts clean | `python main.py` no tracebacks | |
+| 1 | Zero lint errors | `uv run ruff check` exits 0 | |
+| 2 | Types clean | `uv run mypy` exits 0 | |
+| 3 | All unit tests pass | `uv run pytest tests/ -v` all green | |
+| 4 | Server starts clean | `uv run python main.py` no tracebacks | |
 | 5 | Health returns ok | `curl localhost:7860/health` | |
 | 6 | UI loads | Browser opens without console errors | |
 | 7 | Text input roundtrip | "hello" → response in UI | |

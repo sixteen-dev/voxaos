@@ -293,17 +293,17 @@ def test_create_memory_disabled():
 ### Run
 
 ```bash
-ruff check memory/ tests/test_memory.py
-mypy memory/types.py memory/capture.py
-pytest tests/test_memory.py -v
+uv run ruff check memory/ tests/test_memory.py
+uv run mypy memory/types.py memory/capture.py
+uv run pytest tests/test_memory.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check memory/ tests/test_memory.py` | |
-| Types pass | `mypy memory/types.py memory/capture.py` | |
-| SQLite CRUD | `pytest tests/test_memory.py -v` | |
-| Disabled config returns None | `pytest tests/test_memory.py::test_create_memory_disabled` | |
+| Lint clean | `uv run ruff check memory/ tests/test_memory.py` | |
+| Types pass | `uv run mypy memory/types.py memory/capture.py` | |
+| SQLite CRUD | `uv run pytest tests/test_memory.py -v` | |
+| Disabled config returns None | `uv run pytest tests/test_memory.py::test_create_memory_disabled` | |
 
 **Note:** Learning memory (mem0) tests require `MISTRAL_API_KEY` — these are tested manually in verification, not in the gate. The capture log tests run offline.
 

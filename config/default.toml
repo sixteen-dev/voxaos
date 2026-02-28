@@ -1,0 +1,67 @@
+[mode]
+backend = "api"    # "api", "local", or "hybrid"
+
+[server]
+host = "0.0.0.0"
+port = 7860
+
+[stt]
+backend = "api"
+[stt.local]
+model_path = "~/.voxaos/models/voxtral-realtime"
+[stt.api]
+base_url = "https://api.mistral.ai/v1/audio/transcriptions"
+api_key_env = "MISTRAL_API_KEY"
+
+[llm]
+backend = "api"
+max_tool_iterations = 10
+[llm.local]
+base_url = "http://localhost:8000/v1"
+model = "mistralai/Mistral-Nemo-Instruct-2407"
+[llm.api]
+base_url = "https://api.mistral.ai/v1"
+model = "open-mistral-nemo"
+api_key_env = "MISTRAL_API_KEY"
+
+[tts]
+backend = "api"
+[tts.local]
+model = "fastpitch_hifigan"
+model_path = "~/.voxaos/models/nemo-tts"
+[tts.api]
+base_url = "https://integrate.api.nvidia.com/v1"
+api_key_env = "NVIDIA_API_KEY"
+voice = "English-US.Female-1"
+
+[vad]
+threshold = 0.5
+speech_start_ms = 300
+silence_end_ms = 500
+
+[tools]
+shell_timeout = 30
+output_max_chars = 4096
+blocked_commands = ["rm -rf /", "mkfs", "dd if=/dev", "shutdown", "reboot", ":(){ :|:&};:", "chmod -R 777 /", "> /dev/sda"]
+
+[memory]
+enabled = true
+storage_path = "~/.voxaos/memory"
+[memory.learning]
+enabled = true
+[memory.capture]
+enabled = true
+db_path = "~/.voxaos/capture.db"
+
+[home_assistant]
+enabled = false
+url = "http://homeassistant.local:8123"
+token_env = "HA_TOKEN"
+[home_assistant.insights]
+enabled = true
+schedule = "daily"
+time = "08:00"
+entities = []
+
+[context]
+max_history = 20

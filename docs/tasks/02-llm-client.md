@@ -269,16 +269,16 @@ async def test_llm_client_init():
 ### Run
 
 ```bash
-ruff check llm/ tests/test_llm.py
-mypy llm/client.py llm/tools.py llm/prompts.py
-pytest tests/test_llm.py -v
+uv run ruff check llm/ tests/test_llm.py
+uv run mypy llm/client.py llm/tools.py llm/prompts.py
+uv run pytest tests/test_llm.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check llm/ tests/test_llm.py` | |
-| Types pass | `mypy llm/client.py llm/tools.py llm/prompts.py` | |
-| Tool schema tests | `pytest tests/test_llm.py -v` | |
+| Lint clean | `uv run ruff check llm/ tests/test_llm.py` | |
+| Types pass | `uv run mypy llm/client.py llm/tools.py llm/prompts.py` | |
+| Tool schema tests | `uv run pytest tests/test_llm.py -v` | |
 | Tool count ≥ 11 | Verified in test | |
 
 ## Design reference

@@ -451,8 +451,8 @@ def test_types_enums():
 ## Verification
 
 ```bash
-pip install -e ".[dev]"
-python main.py
+uv sync --extra dev
+uv run python main.py
 # Should print config summary without errors
 ```
 
@@ -462,16 +462,16 @@ Run all of these before moving to task 02:
 
 ```bash
 # Lint
-ruff check core/ tests/ main.py
+uv run ruff check core/ tests/ main.py
 
 # Type check
-mypy core/config.py core/types.py
+uv run mypy core/config.py core/types.py
 
 # Tests
-pytest tests/test_config.py -v
+uv run pytest tests/test_config.py -v
 
 # Import smoke test
-python -c "from core.config import load_config; from core.types import PipelineState; print('OK')"
+uv run python -c "from core.config import load_config; from core.types import PipelineState; print('OK')"
 ```
 
 | Check | Command | Pass? |

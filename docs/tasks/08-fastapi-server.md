@@ -251,14 +251,14 @@ else:
 ## Verification
 
 ```bash
-python main.py
+uv run python main.py
 # Server starts on http://0.0.0.0:7860
 
 # Test health
 curl http://localhost:7860/health
 
 # Test WebSocket with a simple Python client:
-python -c "
+uv run python -c "
 import asyncio, websockets, json
 async def test():
     async with websockets.connect('ws://localhost:7860/ws/audio') as ws:
@@ -331,15 +331,15 @@ async def test_audio_handler_ptt_control():
 ### Run
 
 ```bash
-ruff check server/ tests/test_server.py
-mypy server/audio_handler.py
-pytest tests/test_server.py -v
+uv run ruff check server/ tests/test_server.py
+uv run mypy server/audio_handler.py
+uv run pytest tests/test_server.py -v
 ```
 
 | Check | Command | Pass? |
 |-------|---------|-------|
-| Lint clean | `ruff check server/ tests/test_server.py` | |
-| Types pass | `mypy server/audio_handler.py` | |
+| Lint clean | `uv run ruff check server/ tests/test_server.py` | |
+| Types pass | `uv run mypy server/audio_handler.py` | |
 | Handler init | `pytest tests/test_server.py::test_audio_handler_init` | |
 | PTT toggle | `pytest tests/test_server.py::test_audio_handler_ptt_control` | |
 | Server starts | `python main.py` binds to port 7860 (manual) | |
