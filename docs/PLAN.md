@@ -271,7 +271,8 @@ voxaos/
 │   ├── deploy.md                 # Skill: detect build system, test, build, deploy
 │   ├── project-setup.md          # Skill: scaffold new project from template
 │   ├── web-research.md           # Skill: multi-step web research + synthesize findings
-│   └── file-ops.md               # Skill: bulk file operations (rename, move, organize)
+│   ├── file-ops.md               # Skill: bulk file operations (rename, move, organize)
+│   └── home-insights.md          # Skill: analyze HA sensor data, daily/weekly briefing
 │
 ├── memory/
 │   ├── __init__.py
@@ -286,7 +287,8 @@ voxaos/
 │   ├── filesystem.py             # File CRUD, directory listing, search
 │   ├── process.py                # List/kill processes, system info
 │   ├── launcher.py               # Launch apps, open URLs
-│   └── web_search.py             # DuckDuckGo search + page fetch/summarize
+│   ├── web_search.py             # DuckDuckGo search + page fetch/summarize
+│   └── home_assistant.py         # HA REST API: get states, history, call services
 │
 ├── server/
 │   ├── __init__.py
@@ -347,7 +349,13 @@ voxaos/
 7. **`tools/process.py`** - `psutil` for list/kill
 8. **`tools/launcher.py`** - `subprocess.Popen` for apps, `webbrowser.open` for URLs
 9. **`tools/web_search.py`** - `duckduckgo-search` lib, `httpx` + `beautifulsoup4` for page fetch
-10. **`core/context.py`** - conversation history (last 20 exchanges), environment section (OS, hostname, cwd, GPU info)
+10. **`tools/home_assistant.py`** - Home Assistant REST API integration
+    - `ha_get_states(domain?)` — get all entity states, optionally filtered by domain (light, sensor, switch, climate)
+    - `ha_get_history(entity_id, hours)` — pull sensor history for a time period
+    - `ha_call_service(domain, service, entity_id, data?)` — control devices (turn on/off, set temp, etc.)
+    - All calls go through `httpx` to `http://<ha_url>:8123/api/` with long-lived access token
+    - Gated behind `[home_assistant] enabled = true` in config — off by default
+11. **`core/context.py`** - conversation history (last 20 exchanges), environment section (OS, hostname, cwd, GPU info)
 11. **Skills system** - markdown playbooks with YAML frontmatter (Anthropic skill pattern)
     - **`skills/loader.py`** - discovers skill `.md` files, parses frontmatter vs body
       ```python
@@ -413,7 +421,8 @@ voxaos/
       - `project-setup.md` - scaffold directories, init files, git init
       - `web-research.md` - multi-query web search, fetch pages, synthesize findings
       - `file-ops.md` - bulk rename, move, organize files by pattern
-12. **Memory system** - learning memory + full capture
+      - `home-insights.md` - analyze Home Assistant sensor data, generate daily/weekly briefings
+13. **Memory system** - learning memory + full capture
     - **`memory/types.py`** - `InteractionRecord` dataclass (session_id, timestamp, transcript, messages, tool_calls, response, skill_used, latency)
     - **`memory/learning.py`** - mem0 wrapper pointing at local vLLM for extraction, Qdrant in-process for vector storage
     - **`memory/capture.py`** - SQLite logger for complete interaction records
@@ -1089,7 +1098,151 @@ These get injected into context before each LLM call, making the assistant progr
 
 ---
 
-## Phase 2 Preview (Agent Swarms - post hackathon)
+## Home Assistant Integration
+
+VoxaOS connects to Home Assistant via REST API to read sensor data and control devices. HA handles all the hard work — Zigbee pairing, device management, IR codes, protocol translation. VoxaOS just consumes the clean API.
+
+### Phase 1 (Hackathon): Read sensors + insights
+
+**Tool: `tools/home_assistant.py`**
+```python
+HA_HEADERS = {"Authorization": f"Bearer {os.environ[config.ha.token_env]}",
+              "Content-Type": "application/json"}
+
+async def ha_get_states(domain: str = None) -> list[dict]:
+    """Get all entity states, optionally filtered by domain."""
+    resp = await httpx.get(f"{config.ha.url}/api/states", headers=HA_HEADERS)
+    states = resp.json()
+    if domain:
+        states = [s for s in states if s["entity_id"].startswith(f"{domain}.")]
+    return states
+
+async def ha_get_history(entity_id: str, hours: int = 24) -> list[dict]:
+    """Get sensor history for time period — used by insights analyzer."""
+    start = (datetime.now() - timedelta(hours=hours)).isoformat()
+    resp = await httpx.get(
+        f"{config.ha.url}/api/history/period/{start}?filter_entity_id={entity_id}",
+        headers=HA_HEADERS)
+    return resp.json()
+
+async def ha_call_service(domain: str, service: str, entity_id: str, data: dict = None) -> dict:
+    """Call an HA service — turn_on, turn_off, set_temperature, etc."""
+    payload = {"entity_id": entity_id, **(data or {})}
+    resp = await httpx.post(f"{config.ha.url}/api/services/{domain}/{service}",
+                            headers=HA_HEADERS, json=payload)
+    return resp.json()
+```
+
+**Skill: `skills/home-insights.md`**
+```markdown
+---
+name: home-insights
+description: Analyze Home Assistant sensor data and generate insights. Use when
+  the user asks about home conditions, sensor readings, daily briefing, energy
+  usage patterns, or "what happened at home today".
+---
+
+## Home Insights Procedure
+
+### Step 1: Gather Data
+Pull the last 24 hours of history for key sensors using ha_get_history:
+- Temperature sensors (all rooms)
+- Presence/motion sensors
+- Power consumption (smart plugs)
+- Door/window sensors
+
+### Step 2: Analyze Patterns
+Look for:
+- Temperature anomalies (sudden drops/spikes, rooms that differ significantly)
+- Presence patterns (how long in each room, unusual absence/presence)
+- Power anomalies (unexpected spikes, devices left on overnight)
+- Environmental trends (rising humidity, declining air quality)
+
+### Step 3: Generate Briefing
+Summarize findings conversationally. Lead with anything unusual or actionable.
+Keep it under 30 seconds of speech. Examples:
+- "Your office hit 28°C around 2pm — might want to crack a window earlier"
+- "Kitchen smart plug drew power between 1-4am — something left on?"
+- "You were in the office 11 hours straight. Maybe take more breaks."
+
+If nothing unusual: "Everything looks normal. Home ran steady at [temp],
+no anomalies in power or presence."
+```
+
+**Scheduled insights (cron-style):**
+```python
+# core/scheduler.py — lightweight APScheduler or just asyncio background task
+async def daily_insights_job(orchestrator):
+    """Run once daily, store insights in memory, speak on next interaction."""
+    response = await orchestrator.process(
+        "[SYSTEM] Generate daily home insights briefing from sensor data."
+    )
+    await orchestrator.learning_memory.add(
+        "daily home analysis", response.text
+    )
+    # Flag that a briefing is pending — speak it when user next interacts
+    orchestrator.pending_briefing = response.text
+```
+
+### Config
+
+```toml
+[home_assistant]
+enabled = false                    # Opt-in, off by default
+url = "http://homeassistant.local:8123"
+token_env = "HA_TOKEN"             # Long-lived access token from HA
+
+[home_assistant.insights]
+enabled = true
+schedule = "daily"                 # "daily", "weekly", or "off"
+time = "08:00"                     # When to run daily analysis
+entities = [                       # Which entities to track
+    "sensor.living_room_temperature",
+    "sensor.office_presence",
+    "sensor.kitchen_plug_power",
+]
+```
+
+### Phase 2 Upgrades (good to have, later)
+
+- **Direct MQTT subscription** — subscribe to `zigbee2mqtt/#` via `paho-mqtt` for real-time sensor streams without polling HA
+- **mmWave presence triggers** — proactive alerts ("someone entered the room", "office empty for 2 hours")
+- **IR blaster control** — voice-controlled TV, AC via Broadlink/Switchbot through HA service calls
+- **Energy dashboard** — track daily/weekly power consumption, cost estimates
+- **Automation creation** — "When I leave the office, turn off the lights" → VoxaOS creates HA automations via API
+- **Multi-room awareness** — combine presence + temp + time to infer context ("you're in bed, dimming lights")
+
+---
+
+## Phase 2 Preview (post hackathon)
+
+### Multimodal: Pixtral 12B + Webcam
+
+Swap Mistral Nemo 12B for **Pixtral 12B** (`mistralai/Pixtral-12B-2409`) to add vision. Same Mistral family, same tool calling support, but accepts images.
+
+| | Nemo 12B (Phase 1) | Pixtral 12B (Phase 2) |
+|---|---|---|
+| Text + tool calling | Yes | Yes |
+| Vision (images) | No | **Yes** |
+| VRAM | ~8 GB | ~10 GB |
+| vLLM support | Yes | Yes |
+| API format | OpenAI chat | OpenAI chat + vision |
+
+**Implementation (~50 lines of code):**
+1. `ui/app.js` — add `getUserMedia({video: true})`, grab frame on demand via canvas
+2. `server/audio_handler.py` — detect image vs audio binary frames
+3. `llm/client.py` — include image in messages as `image_url` content block
+4. `config/default.toml` — change model name to `mistralai/Pixtral-12B-2409`
+
+**Approach:** On-demand frame capture. User says something that needs vision → browser grabs one JPEG from webcam → sends over WebSocket → Pixtral analyzes. Not continuous video — no vision LLM does real-time streaming yet.
+
+**Demo possibilities:**
+- "Rate my outfit" — webcam frame + fashion judgment
+- "What am I holding up?" — object recognition
+- "Read this whiteboard" — OCR from camera
+- "How many people are in the room?" — audience counting
+
+### Agent Swarms
 
 With ~34GB free VRAM after Phase 1, architecture supports spawning specialist agents:
 
