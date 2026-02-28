@@ -272,7 +272,7 @@ voxaos/
 │   ├── project-setup.md          # Skill: scaffold new project from template
 │   ├── web-research.md           # Skill: multi-step web research + synthesize findings
 │   ├── file-ops.md               # Skill: bulk file operations (rename, move, organize)
-│   └── home-insights.md          # Skill: analyze HA sensor data, daily/weekly briefing
+│   └── home-assistant.md          # Skill: analyze HA sensor data, daily/weekly briefing
 │
 ├── memory/
 │   ├── __init__.py
@@ -421,7 +421,7 @@ voxaos/
       - `project-setup.md` - scaffold directories, init files, git init
       - `web-research.md` - multi-query web search, fetch pages, synthesize findings
       - `file-ops.md` - bulk rename, move, organize files by pattern
-      - `home-insights.md` - analyze Home Assistant sensor data, generate daily/weekly briefings
+      - `home-assistant.md` - analyze Home Assistant sensor data, generate daily/weekly briefings
 13. **Memory system** - learning memory + full capture
     - **`memory/types.py`** - `InteractionRecord` dataclass (session_id, timestamp, transcript, messages, tool_calls, response, skill_used, latency)
     - **`memory/learning.py`** - mem0 wrapper pointing at local vLLM for extraction, Qdrant in-process for vector storage
@@ -1100,22 +1100,54 @@ These get injected into context before each LLM call, making the assistant progr
 
 ## Home Assistant Integration
 
-VoxaOS connects to Home Assistant via REST API to read sensor data and control devices. HA handles all the hard work — Zigbee pairing, device management, IR codes, protocol translation. VoxaOS just consumes the clean API.
+VoxaOS connects to Home Assistant via REST API to read sensor data AND control devices. HA handles all the hard work — Zigbee pairing, device management, IR codes, protocol translation. VoxaOS just consumes the clean API.
 
-### Phase 1 (Hackathon): Read sensors + insights
+### API Endpoints
 
-**Tool: `tools/home_assistant.py`**
+Two HA REST API patterns:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/states` | GET | List all entity states |
+| `/api/states/<entity_id>` | GET | Get single entity state |
+| `/api/states/<entity_id>` | POST | Update entity state (sets state in HA) |
+| `/api/services/<domain>/<service>` | POST | Trigger device actions (turn_on, turn_off, set_temperature) |
+| `/api/history/period/<timestamp>` | GET | Sensor history for analysis |
+
+**Important:** `POST /api/states/<entity_id>` updates the entity state in HA's database. For physically controlling devices (lights, switches, AC), use `POST /api/services/<domain>/<service>` — this triggers the actual hardware. Both need the long-lived access token as Bearer auth.
+
+### Tool: `tools/home_assistant.py`
+
 ```python
 HA_HEADERS = {"Authorization": f"Bearer {os.environ[config.ha.token_env]}",
               "Content-Type": "application/json"}
 
 async def ha_get_states(domain: str = None) -> list[dict]:
-    """Get all entity states, optionally filtered by domain."""
+    """Get all entity states, optionally filtered by domain (light, sensor, switch, climate)."""
     resp = await httpx.get(f"{config.ha.url}/api/states", headers=HA_HEADERS)
     states = resp.json()
     if domain:
         states = [s for s in states if s["entity_id"].startswith(f"{domain}.")]
     return states
+
+async def ha_get_state(entity_id: str) -> dict:
+    """Get single entity state."""
+    resp = await httpx.get(f"{config.ha.url}/api/states/{entity_id}", headers=HA_HEADERS)
+    return resp.json()
+
+async def ha_set_state(entity_id: str, state: str, attributes: dict = None) -> dict:
+    """POST /api/states/<entity_id> — update entity state in HA."""
+    payload = {"state": state, **({"attributes": attributes} if attributes else {})}
+    resp = await httpx.post(f"{config.ha.url}/api/states/{entity_id}",
+                            headers=HA_HEADERS, json=payload)
+    return resp.json()
+
+async def ha_call_service(domain: str, service: str, entity_id: str, data: dict = None) -> dict:
+    """POST /api/services/<domain>/<service> — trigger device action."""
+    payload = {"entity_id": entity_id, **(data or {})}
+    resp = await httpx.post(f"{config.ha.url}/api/services/{domain}/{service}",
+                            headers=HA_HEADERS, json=payload)
+    return resp.json()
 
 async def ha_get_history(entity_id: str, hours: int = 24) -> list[dict]:
     """Get sensor history for time period — used by insights analyzer."""
@@ -1124,52 +1156,98 @@ async def ha_get_history(entity_id: str, hours: int = 24) -> list[dict]:
         f"{config.ha.url}/api/history/period/{start}?filter_entity_id={entity_id}",
         headers=HA_HEADERS)
     return resp.json()
-
-async def ha_call_service(domain: str, service: str, entity_id: str, data: dict = None) -> dict:
-    """Call an HA service — turn_on, turn_off, set_temperature, etc."""
-    payload = {"entity_id": entity_id, **(data or {})}
-    resp = await httpx.post(f"{config.ha.url}/api/services/{domain}/{service}",
-                            headers=HA_HEADERS, json=payload)
-    return resp.json()
 ```
 
-**Skill: `skills/home-insights.md`**
+### LLM Tool Schemas (for `llm/tools.py`)
+
+```python
+{
+    "name": "ha_get_states",
+    "description": "Get current state of home devices. Filter by domain: light, sensor, switch, climate, media_player",
+    "parameters": {
+        "domain": {"type": "string", "description": "Optional: filter by device type"}
+    }
+},
+{
+    "name": "ha_get_state",
+    "description": "Get state of a specific home device by entity ID",
+    "parameters": {
+        "entity_id": {"type": "string", "description": "e.g. sensor.living_room_temperature, light.bedroom"}
+    }
+},
+{
+    "name": "ha_set_state",
+    "description": "Update an entity state in Home Assistant via POST /api/states/<entity_id>",
+    "parameters": {
+        "entity_id": {"type": "string", "description": "The entity to update"},
+        "state": {"type": "string", "description": "New state value (e.g. 'on', 'off', '22.5')"},
+        "attributes": {"type": "object", "description": "Optional attributes to set"}
+    }
+},
+{
+    "name": "ha_call_service",
+    "description": "Control a home device — turn on/off lights, set AC temperature, toggle switches",
+    "parameters": {
+        "domain": {"type": "string", "description": "Device domain: light, switch, climate, media_player"},
+        "service": {"type": "string", "description": "Action: turn_on, turn_off, toggle, set_temperature"},
+        "entity_id": {"type": "string", "description": "The device ID, e.g. light.living_room"},
+        "data": {"type": "object", "description": "Optional extra params like {temperature: 22}"}
+    }
+},
+{
+    "name": "ha_get_history",
+    "description": "Get sensor history over a time period for analysis and insights",
+    "parameters": {
+        "entity_id": {"type": "string"},
+        "hours": {"type": "integer", "description": "How many hours back, default 24"}
+    }
+}
+```
+
+### Skill: `skills/home-assistant.md`
+
 ```markdown
 ---
-name: home-insights
-description: Analyze Home Assistant sensor data and generate insights. Use when
-  the user asks about home conditions, sensor readings, daily briefing, energy
-  usage patterns, or "what happened at home today".
+name: home-assistant
+description: Control and monitor smart home devices via Home Assistant. Use when the
+  user asks to turn on/off lights, check sensor readings, set thermostat temperature,
+  get home status, control any smart device, or analyze home sensor data patterns.
+  Also handles daily/weekly home briefings and insights.
 ---
 
-## Home Insights Procedure
+## Home Assistant Control & Insights
 
-### Step 1: Gather Data
-Pull the last 24 hours of history for key sensors using ha_get_history:
-- Temperature sensors (all rooms)
-- Presence/motion sensors
-- Power consumption (smart plugs)
-- Door/window sensors
+You have access to a Home Assistant instance with connected smart home devices
+(Zigbee sensors, lights, switches, climate, plugs, presence sensors, IR blasters).
 
-### Step 2: Analyze Patterns
-Look for:
-- Temperature anomalies (sudden drops/spikes, rooms that differ significantly)
-- Presence patterns (how long in each room, unusual absence/presence)
-- Power anomalies (unexpected spikes, devices left on overnight)
-- Environmental trends (rising humidity, declining air quality)
+### Reading State
+- Use ha_get_states(domain) to list devices by type
+- Use ha_get_state(entity_id) to check a specific device
+- Common domains: light, switch, sensor, climate, binary_sensor, media_player
 
-### Step 3: Generate Briefing
-Summarize findings conversationally. Lead with anything unusual or actionable.
-Keep it under 30 seconds of speech. Examples:
-- "Your office hit 28°C around 2pm — might want to crack a window earlier"
-- "Kitchen smart plug drew power between 1-4am — something left on?"
-- "You were in the office 11 hours straight. Maybe take more breaks."
+### Controlling Devices
+- Use ha_call_service to trigger physical device actions:
+  - Lights: ha_call_service("light", "turn_on", "light.living_room", {"brightness": 200})
+  - AC/Climate: ha_call_service("climate", "set_temperature", "climate.bedroom_ac", {"temperature": 22})
+  - Switches: ha_call_service("switch", "turn_off", "switch.kitchen_plug")
+  - Media: ha_call_service("media_player", "media_play_pause", "media_player.tv")
+- Use ha_set_state to update entity state directly via POST /api/states/<entity_id>
 
-If nothing unusual: "Everything looks normal. Home ran steady at [temp],
-no anomalies in power or presence."
+### Analyzing Sensor Data
+When asked for insights, briefings, or "what happened at home":
+1. Pull history with ha_get_history for relevant sensors (last 24h default)
+2. Look for: temperature anomalies, presence patterns, power spikes, devices left on
+3. Summarize conversationally — lead with unusual or actionable findings
+4. Keep voice response under 30 seconds
+
+### Safety
+- Always confirm before controlling climate (AC, heating) — changing temp costs money
+- Never turn off devices that sound safety-critical (alarms, cameras, medical)
+- For batch operations ("turn off everything"), list what will be affected first
 ```
 
-**Scheduled insights (cron-style):**
+### Scheduled Insights (cron-style)
+
 ```python
 # core/scheduler.py — lightweight APScheduler or just asyncio background task
 async def daily_insights_job(orchestrator):
@@ -1180,9 +1258,20 @@ async def daily_insights_job(orchestrator):
     await orchestrator.learning_memory.add(
         "daily home analysis", response.text
     )
-    # Flag that a briefing is pending — speak it when user next interacts
     orchestrator.pending_briefing = response.text
 ```
+
+### Risk Classification
+
+| Tool | Risk Level | Reason |
+|------|-----------|--------|
+| `ha_get_states` | safe | Read-only |
+| `ha_get_state` | safe | Read-only |
+| `ha_get_history` | safe | Read-only |
+| `ha_set_state` | moderate | Updates state in HA |
+| `ha_call_service` | moderate | Controls physical devices |
+
+No confirmation gate for moderate — worst case you toggle a light. Not destructive.
 
 ### Config
 
@@ -1207,7 +1296,6 @@ entities = [                       # Which entities to track
 
 - **Direct MQTT subscription** — subscribe to `zigbee2mqtt/#` via `paho-mqtt` for real-time sensor streams without polling HA
 - **mmWave presence triggers** — proactive alerts ("someone entered the room", "office empty for 2 hours")
-- **IR blaster control** — voice-controlled TV, AC via Broadlink/Switchbot through HA service calls
 - **Energy dashboard** — track daily/weekly power consumption, cost estimates
 - **Automation creation** — "When I leave the office, turn off the lights" → VoxaOS creates HA automations via API
 - **Multi-room awareness** — combine presence + temp + time to infer context ("you're in bed, dimming lights")
