@@ -309,21 +309,22 @@ voxaos/
 
 ## Implementation Phases (24-hour hackathon)
 
-### Phase 1: Infrastructure + Model Serving (Hours 0-4)
+### Phase 1: Infrastructure + API Setup (Hours 0-3)
 
-**Goal:** All models downloadable, vLLM serving, config wired up.
+**Goal:** Config wired up, API keys working, basic project skeleton running. Starting with APIs — no model downloads or GPU setup needed yet.
 
 1. **`pyproject.toml`** - define all deps
 2. **`setup.sh`** - one-click install: system packages (ffmpeg, libsndfile), Python env, deps
-3. **`scripts/download_models.sh`** - pull Voxtral Realtime, Mistral Nemo 12B, NeMo TTS weights
-4. **`scripts/start_vllm.sh`** - launch vLLM with Mistral Nemo 12B, OpenAI-compatible endpoint on `:8000`
-5. **`config/default.toml`** + **`core/config.py`** - Pydantic config models, TOML loader
-   - Model paths, vLLM URL, server port, tool settings, VAD thresholds
-6. **`core/types.py`** - shared dataclasses
+3. **API keys setup** - get Mistral API key (STT + LLM) + NVIDIA API key (Riva TTS)
+4. **`config/default.toml`** + **`core/config.py`** - Pydantic config models, TOML loader
+   - API endpoints, keys, server port, tool settings, VAD thresholds
+   - Default mode: `backend = "api"` for all components
+5. **`core/types.py`** - shared dataclasses
    - `Response(text, audio_bytes, tool_calls_made, latency_ms)`
    - `StreamChunk(type, content)` - types: "transcript", "thinking", "tool_start", "tool_result", "text", "audio"
    - `ToolCall(id, name, args)`, `ToolResult(tool_use_id, content, is_error)`
-7. **Verify:** `curl localhost:8000/v1/chat/completions` with a tool-calling test payload
+6. **Verify:** Quick Python script hitting Mistral API with a tool-calling test payload
+7. **Later (when switching to local):** `scripts/download_models.sh` + `scripts/start_vllm.sh` — only needed when optimizing to local GPU
 
 ### Phase 2: Core Brain - Orchestrator + LLM + Tools (Hours 4-12)
 
@@ -336,8 +337,9 @@ voxaos/
 2. **`llm/prompts.py`** - system prompt builder
    - VoxaOS persona, environment context injection, tool usage instructions
    - Key instruction: "Be concise - the user is listening, not reading"
-3. **`llm/client.py`** - async vLLM client
-   - Uses `openai` Python SDK pointing at `localhost:8000`
+3. **`llm/client.py`** - async LLM client (API-first, local-ready)
+   - Uses `openai` Python SDK — same SDK works for both Mistral API and local vLLM
+   - Initially points at `https://api.mistral.ai/v1`, swap to `localhost:8000` for local
    - `async def chat(messages, tools) -> LLMResponse`
    - Parses tool_calls from response, handles streaming
 4. **`tools/executor.py`** - tool dispatch + risk classification
@@ -609,18 +611,8 @@ Rules:
 
 The architecture supports three deployment modes via a single config toggle. The code stays the same — only the endpoint URLs change.
 
-### Mode 1: Full Local (NVIDIA L40S GPU)
-**Primary mode.** Everything runs on the GPU.
-
-| Component | Implementation | Latency |
-|-----------|---------------|---------|
-| STT | Voxtral Realtime (local GPU) | ~200ms |
-| LLM | Mistral Nemo 12B via vLLM (local GPU) | ~500ms |
-| TTS | NVIDIA NeMo FastPitch+HiFi-GAN (local GPU) | ~300ms |
-| **Total** | | **~1-2s** |
-
-### Mode 2: Full API (Laptop / No GPU)
-**Backup if NVIDIA cloud falls through.** Runs on any machine with internet.
+### Mode 1: Full API (Initial / Default)
+**Start here.** Get the pipeline working end-to-end with APIs first. No GPU setup, no model downloads, works from any machine with internet. Focus on building the orchestrator, tools, skills, and UI — swap to local models once everything is solid.
 
 | Component | Implementation | Latency | Cost |
 |-----------|---------------|---------|------|
@@ -628,6 +620,16 @@ The architecture supports three deployment modes via a single config toggle. The
 | LLM | Mistral Nemo API (La Plateforme) | ~500ms-1s | $0.02/M input, $0.04/M output |
 | TTS | NVIDIA Riva TTS NIM API | ~500ms | Free tier on build.nvidia.com |
 | **Total** | | **~2-4s** | **<$1 for entire hackathon** |
+
+### Mode 2: Full Local (NVIDIA L40S GPU)
+**Optimization mode.** Once the pipeline works with APIs, swap to local models for lower latency and no API costs.
+
+| Component | Implementation | Latency |
+|-----------|---------------|---------|
+| STT | Voxtral Realtime (local GPU) | ~200ms |
+| LLM | Mistral Nemo 12B via vLLM (local GPU) | ~500ms |
+| TTS | NVIDIA NeMo FastPitch+HiFi-GAN (local GPU) | ~300ms |
+| **Total** | | **~1-2s** |
 
 ### Mode 3: Hybrid (Mix local + API)
 **Best of both worlds.** Run what you can locally, offload the rest.
@@ -638,13 +640,13 @@ Example: Local LLM (fast tool calling) + API for STT/TTS.
 
 ```toml
 [mode]
-# "local" = everything on GPU
-# "api"   = everything via API (no GPU needed)
+# "api"    = everything via API (default, start here)
+# "local"  = everything on GPU
 # "hybrid" = mix (configure per-component below)
-backend = "local"
+backend = "api"
 
 [stt]
-backend = "local"              # or "api"
+backend = "api"                # start with API, switch to "local" later
 
 [stt.local]
 model_path = "~/.voxaos/models/voxtral-realtime"
@@ -654,7 +656,7 @@ base_url = "https://api.mistral.ai/v1/audio/transcriptions"
 api_key_env = "MISTRAL_API_KEY"
 
 [llm]
-backend = "local"              # or "api"
+backend = "api"                # start with API, switch to "local" later
 
 [llm.local]
 base_url = "http://localhost:8000/v1"
@@ -666,7 +668,7 @@ model = "mistral-nemo-latest"
 api_key_env = "MISTRAL_API_KEY"
 
 [tts]
-backend = "local"              # or "api"
+backend = "api"                # start with API, switch to "local" later
 
 [tts.local]
 model = "fastpitch_hifigan"
