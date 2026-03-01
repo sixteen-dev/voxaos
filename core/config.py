@@ -52,7 +52,7 @@ class TTSApiConfig(BaseModel):
 
 
 class TTSConfig(BaseModel):
-    backend: str = "api"
+    backend: str = "disabled"
     local: TTSLocalConfig = TTSLocalConfig()
     api: TTSApiConfig = TTSApiConfig()
 

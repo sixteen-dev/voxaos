@@ -70,6 +70,13 @@ class RivaTTSAPI(TTSEngine):
             return audio
 
 
+class NoopTTS(TTSEngine):
+    """Silent TTS that returns empty audio — used when TTS is disabled."""
+
+    async def synthesize(self, text: str) -> np.ndarray:
+        return np.zeros(0, dtype=np.float32)
+
+
 class LocalTTS(TTSEngine):
     """Placeholder for local NeMo FastPitch + HiFi-GAN inference."""
 
@@ -78,6 +85,8 @@ class LocalTTS(TTSEngine):
 
 
 async def create_tts(config: TTSConfig) -> TTSEngine:
+    if config.backend == "disabled":
+        return NoopTTS()
     if config.backend == "api":
         return RivaTTSAPI(config)
     return LocalTTS()

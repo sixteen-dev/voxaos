@@ -33,7 +33,7 @@ class MistralSTTAPI(STTEngine):
                 self.base_url,
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 files={"file": ("audio.wav", wav_bytes, "audio/wav")},
-                data={"model": "mistral-large-latest"},
+                data={"model": "voxtral-mini-latest"},
             )
             resp.raise_for_status()
             data = resp.json()
